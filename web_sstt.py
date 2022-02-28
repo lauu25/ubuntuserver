@@ -203,7 +203,7 @@ def process_web_request(cs, webroot):
                            "Content-Type: " + extension + "\r\n" \
                            "\r\n"
                 cabecera = cabecera.encode()
-
+                print("IMBESIL")
                 f = open(ruta, "rb")
                 cuerpo = b''
                 linea = f.read(BUFSIZE)
