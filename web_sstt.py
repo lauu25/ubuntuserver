@@ -17,6 +17,7 @@ from typing import List, Any
 BUFSIZE = 8192  # Tamaño máximo del buffer que se puede utilizar
 TIMEOUT_CONNECTION = 20  # Timout para la conexión persistente
 MAX_ACCESOS = 10
+ORGANITATION_NAME = "diseñadoresdemoda48.org"
 
 # Extensiones admitidas (extension, name in HTTP)
 filetypes = {"gif": "image/gif", "jpg": "image/jpg", "jpeg": "image/jpeg", "png": "image/png", "htm": "text/htm",
@@ -129,26 +130,29 @@ def process_web_request(cs, webroot):
             if not reg:
                 mensaje =   "HTTP/1.1 400 Bad Request\r\n" \
                             "Date: " + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')  + "\r\n" \
-                            "Server: laura@ubuntuserver\r\n" \
+                            "Server: "+ ORGANITATION_NAME + "\r\n" \
                             "\r\n"
                 enviar_mensaje(cs, mensaje.encode())
+                print(mensaje)
             else:
                 print(data)
 
                 if int(reg.group(3)) != 1:
                     mensaje = "HTTP/1.1 505 HTTP Version not supported\r\n" \
                               "Date: " + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT') + "\r\n" \
-                              "Server: laura@ubuntuserver\r\n" \
+                              "Server: "+ ORGANITATION_NAME + "\r\n" \
                               "\r\n"
                     enviar_mensaje(cs, mensaje.encode())
+                    print(mensaje)
                     continue
 
                 if reg.group(1) != "GET":
                     mensaje = "HTTP/1.1 405 Method not allowed\r\n" \
                               "Date: " + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT') + "\r\n" \
-                              "Server: laura@ubuntuserver\r\n" \
+                              "Server: "+ ORGANITATION_NAME + "\r\n" \
                               "\r\n"
                     enviar_mensaje(cs, mensaje.encode())
+                    print(mensaje)
                     continue
 
                 URL = reg.group(2).split('?', 1)[0]
@@ -163,9 +167,10 @@ def process_web_request(cs, webroot):
                 if not os.path.isfile(ruta):
                     mensaje = "HTTP/1.1 404 Not found\r\n" \
                               "Date: " + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT') + "\r\n" \
-                              "Server: laura@ubuntuserver\r\n" \
+                              "Server: "+ ORGANITATION_NAME + "\r\n" \
                               "\r\n"
                     enviar_mensaje(cs, mensaje.encode())
+                    print(mensaje)
                     continue
 
                 Atr = {}
@@ -181,9 +186,10 @@ def process_web_request(cs, webroot):
                 if num_accesos == MAX_ACCESOS:
                     mensaje = "HTTP/1.1 403 Forbidden\r\n" \
                               "Date: " + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT') + "\r\n" \
-                              "Server: laura@ubuntuserver\r\n" \
+                              "Server: "+ ORGANITATION_NAME + "\r\n" \
                               "\r\n"
                     enviar_mensaje(cs, mensaje.encode())
+                    print(mensaje)
                     continue
 
                 size = os.stat(ruta).st_size
@@ -196,14 +202,16 @@ def process_web_request(cs, webroot):
                 extension = str(rut.group(2))
                 cabecera = "HTTP/1.1 200 OK\r\n" \
                            "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
-                           "Server: laura@ubuntuserver\r\n" \
-                           "Connection: Keep-Alive\r\n" \
+                           "Server: "+ ORGANITATION_NAME + "\r\n" \
+                           "Connection: " + str(Atr["Connection"]) + "\r\n" \
+                           "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
                            "Set-Cookie: " + str(num_accesos) + "\r\n" \
                            "Content-Length: " + str(size) + "\r\n" \
                            "Content-Type: " + extension + "\r\n" \
                            "\r\n"
+                print(cabecera)
                 cabecera = cabecera.encode()
-                
+
                 f = open(ruta, "rb")
                 cuerpo = b''
                 linea = f.read(BUFSIZE)
