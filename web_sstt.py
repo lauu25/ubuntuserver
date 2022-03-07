@@ -20,13 +20,14 @@ from typing import List, Any
 BUFSIZE = 8192  # Tamaño máximo del buffer que se puede utilizar
 TIMEOUT_CONNECTION = 20  # Timout para la conexión persistente
 MAX_ACCESOS = 10
-ORGANITATION_NAME = "www.residenziamilano48.org"
+ORGANITATION_NAME = "web.residenzamilano48.org"
 ERROR_TOUT = "errorTOUT.html"
 ERROR_400 = "error400.html"
 ERROR_403 = "error403.html"
 ERROR_404 = "error404.html"
 ERROR_405 = "error405.html"
 ERROR_505 = "error505.html"
+MAX_AGE = 20
 
 
 # Extensiones admitidas (extension, name in HTTP)
@@ -51,7 +52,8 @@ def enviar_mensaje(cs, ruta, cabecera):
         cuerpo += linea
         linea = f.read(BUFSIZE)
     mensaje = cabecera.encode()+cuerpo
-    print(mensaje)
+    print("\n************ HTTP_RESPONSE ************")
+    print(cabecera)
     return cs.send(mensaje)
 
 
@@ -83,12 +85,13 @@ def process_cookies(headers):
         if i == "Cookie":
             cookie_counter = er_cookie.match(headers[i])
             if cookie_counter:
-                if cookie_counter.group(1) == MAX_ACCESOS:
+                if int(cookie_counter.group(1)) == MAX_ACCESOS:
                     return MAX_ACCESOS
                 else:
-                    return cookie_counter.group(1) + 1
+                    return int(cookie_counter.group(1)) + 1
             else:
-                return 1
+                break
+    return 1
 
 
 def process_web_request(cs, webroot):
@@ -177,13 +180,22 @@ def process_web_request(cs, webroot):
                 ruta = str(webroot) + recurso
 
                 Atr = {}
+
+                host = 0
+                print("\n************ HTTP_REQUEST ************")
                 for i in range(1, len(data)):
                     atr = er_atrib.fullmatch(data[i])
                     if atr:
+                        if str(atr.group(1)) == "Host":
+                            host = 1
                         Atr[str(atr.group(1))] = str(atr.group(2))
                         print(str(atr.group(1)) + ": " + str(atr.group(2)))
                     else:
                         break
+
+                if not host:
+                    print("Error: Not host especified ")
+                    continue
 
                 if not os.path.isfile(ruta):
                     size = os.stat(ERROR_404).st_size
@@ -200,6 +212,7 @@ def process_web_request(cs, webroot):
                     continue
 
                 num_accesos = process_cookies(Atr)
+
                 if num_accesos == MAX_ACCESOS:
                     size = os.stat(ERROR_403).st_size
                     cabecera = "HTTP/1.1 403 Forbidden\r\n" \
@@ -221,27 +234,18 @@ def process_web_request(cs, webroot):
                 rut = er_extension.fullmatch(ruta)
                 extension = str(rut.group(2))
                 size = os.stat(ruta).st_size
-                if num_accesos == 1:
-                    cabecera = "HTTP/1.1 200 OK\r\n" \
-                               "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
-                               "Server: " + ORGANITATION_NAME + "\r\n" \
-                               "Connection: " + str(Atr["Connection"]) + "\r\n" \
-                               "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
-                               "Set-Cookie: cookie_counter=" + str(num_accesos) + "\r\n" \
-                               "Content-Length: " + str(size) + "\r\n" \
-                               "Content-Type: " + extension + "\r\n" \
-                               "\r\n"
-                else:
-                    cabecera = "HTTP/1.1 200 OK\r\n" \
-                               "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
-                               "Server: " + ORGANITATION_NAME + "\r\n" \
-                               "Connection: " + str(Atr["Connection"]) + "\r\n" \
-                               "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
-                               "Content-Length: " + str(size) + "\r\n" \
-                               "Content-Type: " + extension + "\r\n" \
-                               "\r\n"
-
-                enviar_mensaje(cs, ruta, cabecera)
+                cabecera = "HTTP/1.1 200 OK\r\n" \
+                           "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
+                           "Server: " + ORGANITATION_NAME + "\r\n" \
+                           "Connection: keep-alive"  + "\r\n" \
+                           "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
+                           "Set-Cookie: cookie_counter=" + str(num_accesos) + "; Max-Age=" + str(MAX_AGE) + "\r\n" \
+                           "Content-Length: " + str(size) + "\r\n" \
+                           "Content-Type: " + extension + "\r\n" \
+                           "\r\n"
+                msj = enviar_mensaje(cs, ruta, cabecera)
+                if not msj:
+                    print("ERROR al enviar mensajes por el socket")
 
 
 def main():
