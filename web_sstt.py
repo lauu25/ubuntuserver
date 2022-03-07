@@ -1,6 +1,9 @@
 # coding=utf-8
 # !/usr/bin/env python3
 
+
+## CONTENT LEGNHT y type y connection = keep-alive
+
 import socket
 import selectors  # https://docs.python.org/3/library/selectors.html
 import select
@@ -17,7 +20,14 @@ from typing import List, Any
 BUFSIZE = 8192  # Tamaño máximo del buffer que se puede utilizar
 TIMEOUT_CONNECTION = 20  # Timout para la conexión persistente
 MAX_ACCESOS = 10
-ORGANITATION_NAME = "diseñadoresdemoda48.org"
+ORGANITATION_NAME = "www.residenziamilano48.org"
+ERROR_TOUT = "errorTOUT.html"
+ERROR_400 = "error400.html"
+ERROR_403 = "error403.html"
+ERROR_404 = "error404.html"
+ERROR_405 = "error405.html"
+ERROR_505 = "error505.html"
+
 
 # Extensiones admitidas (extension, name in HTTP)
 filetypes = {"gif": "image/gif", "jpg": "image/jpg", "jpeg": "image/jpeg", "png": "image/png", "htm": "text/htm",
@@ -30,11 +40,19 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger()
 
 
-def enviar_mensaje(cs, data):
-    """ Esta función envía datos (data) a través del socket cs
+def enviar_mensaje(cs, ruta, cabecera):
+    """ Esta función envía datos leidos desde la ruta + cabecera a través del socket cs
         Devuelve el número de bytes enviados.
     """
-    return cs.send(data)
+    f = open(ruta, "rb")
+    cuerpo = b''
+    linea = f.read(BUFSIZE)
+    while linea != b'':
+        cuerpo += linea
+        linea = f.read(BUFSIZE)
+    mensaje = cabecera.encode()+cuerpo
+    print(mensaje)
+    return cs.send(mensaje)
 
 
 def recibir_mensaje(cs, data):
@@ -43,7 +61,6 @@ def recibir_mensaje(cs, data):
     """
     data = (cs.recv(data)).decode()
     return data
-
 
 def cerrar_conexion(cs):
     """ Esta función cierra una conexión activa.
@@ -75,46 +92,25 @@ def process_cookies(headers):
 
 
 def process_web_request(cs, webroot):
-    """ Procesamiento principal de los mensajes recibidos.
-            Típicamente se seguirá un procedimiento similar al siguiente (aunque el alumno puede modificarlo si lo desea)
-
-            * Bucle para esperar hasta que lleguen datos en la red a través del socket cs con select()
-
-            * Se comprueba si hay que cerrar la conexión por exceder TIMEOUT_CONNECTION segundos
-              sin recibir ningún mensaje o hay datos. Se utiliza select.select
-
-            * Si no es por timeout y hay datos en el socket cs.
-                * Leer los datos con recv.
-                * Analizar que la línea de solicitud y comprobar está bien formateada según HTTP 1.1
-                    * Devuelve una lista con los atributos de las cabeceras.
-                    * Comprobar si la versión de HTTP es 1.1
-                    * Comprobar si es un método GET. Si no devolver un error Error 405 "Method Not Allowed".
-                    * Leer URL y eliminar parámetros si los hubiera
-                    * Comprobar si el recurso solicitado es /, En ese caso el recurso es index.html
-                    * Construir la ruta absoluta del recurso (webroot + recurso solicitado)
-                    * Comprobar que el recurso (fichero) existe, si no devolver Error 404 "Not found"
-                    * Analizar las cabeceras. Imprimir cada cabecera y su valor. Si la cabecera es Cookie comprobar
-                      el valor de cookie_counter para ver si ha llegado a MAX_ACCESOS.
-                      Si se ha llegado a MAX_ACCESOS devolver un Error "403 Forbidden"
-                    * Obtener el tamaño del recurso en bytes.
-                    * Extraer extensión para obtener el tipo de archivo. Necesario para la cabecera Content-Type
-                    * Preparar respuesta con código 200. Construir una respuesta que incluya: la línea de respuesta y
-                      las cabeceras Date, Server, Connection, Set-Cookie (para la cookie cookie_counter),
-                      Content-Length y Content-Type.
-                    * Leer y enviar el contenido del fichero a retornar en el cuerpo de la respuesta.
-                    * Se abre el fichero en modo lectura y modo binario
-                        * Se lee el fichero en bloques de BUFSIZE bytes (8KB)
-                        * Cuando ya no hay más información para leer, se corta el bucle
-
-            * Si es por timeout, se cierra el socket tras el período de persistencia.
-                * NOTA: Si hay algún error, enviar una respuesta de error con una pequeña página HTML que informe del error.
-    """
     cond = True
+    """ Bucle para escuchar peticiones por el socket, hasta que pase el timeout
+        sin recibir ninguna """
     while cond:
         rsublist, wsublist, xsublist = select.select([cs], [], [cs], TIMEOUT_CONNECTION)
 
+        # Comprobación de TIMEOUT
         if not (rsublist or xsublist):
-            print("Error: Timeout exceeded")
+            size = os.stat(ERROR_TOUT).st_size
+            cabecera = "HTTP/1.1 Timeout exceeded \r\n" \
+                       "Date: " + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT') + "\r\n" \
+                       "Server: " + ORGANITATION_NAME + "\r\n" \
+                       "Connection: close\r\n" \
+                       "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
+                       "Content-Length: " + str(size) + "\r\n" \
+                       "\r\n"
+            msj = enviar_mensaje(cs,ERROR_TOUT, cabecera)
+            if not msj:
+                print("ERROR al enviar mensajes por el socket")
             cond = False
             cerrar_conexion(cs)
 
@@ -127,51 +123,58 @@ def process_web_request(cs, webroot):
             er_met = re.compile(patron_met)
             er_atrib = re.compile(patron_atrib)
             reg = er_met.fullmatch(data[0])
+            # Comprobación de que la primera línea sigue el formato HTTP\1.1
             if not reg:
-                mensaje =   "HTTP/1.1 400 Bad Request\r\n" \
-                            "Date: " + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')  + "\r\n" \
-                            "Server: "+ ORGANITATION_NAME + "\r\n" \
-                            "\r\n"
-                enviar_mensaje(cs, mensaje.encode())
-                print(mensaje)
+                size = os.stat(ERROR_400).st_size
+                cabecera = "HTTP/1.1 400 Bad Request\r\n" \
+                           "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
+                           "Server: " + ORGANITATION_NAME + "\r\n" \
+                           "Connection: keep-alive\r\n" \
+                           "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
+                           "Content-Length: " + str(size) + "\r\n" \
+                           "\r\n"
+                msj = enviar_mensaje(cs, ERROR_400, cabecera)
+                if not msj:
+                    print("ERROR al enviar mensajes por el socket")
             else:
                 print(data)
 
-                if int(reg.group(3)) != 1:
-                    mensaje = "HTTP/1.1 505 HTTP Version not supported\r\n" \
-                              "Date: " + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT') + "\r\n" \
-                              "Server: "+ ORGANITATION_NAME + "\r\n" \
-                              "\r\n"
-                    enviar_mensaje(cs, mensaje.encode())
-                    print(mensaje)
-                    continue
-
                 if reg.group(1) != "GET":
-                    mensaje = "HTTP/1.1 405 Method not allowed\r\n" \
-                              "Date: " + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT') + "\r\n" \
-                              "Server: "+ ORGANITATION_NAME + "\r\n" \
-                              "\r\n"
-                    enviar_mensaje(cs, mensaje.encode())
-                    print(mensaje)
+                    size = os.stat(ERROR_405).st_size
+                    cabecera = "HTTP/1.1 405 Method not allowed\r\n" \
+                               "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
+                               "Server: " + ORGANITATION_NAME + "\r\n" \
+                               "Connection: keep-alive\r\n" \
+                               "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
+                               "Content-Length: " + str(size) + "\r\n" \
+                               "\r\n"
+                    msj = enviar_mensaje(cs, ERROR_405, cabecera)
+                    if not msj:
+                        print("ERROR al enviar mensajes por el socket")
                     continue
 
-                URL = reg.group(2).split('?', 1)[0]
+                if int(reg.group(3)) != 1:
+                    size = os.stat(ERROR_505).st_size
+                    cabecera = "HTTP/1.1 505 HTTP Version not supported\r\n" \
+                               "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
+                               "Server: " + ORGANITATION_NAME + "\r\n" \
+                               "Connection: keep-alive\r\n" \
+                               "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
+                               "Content-Length: " + str(size) + "\r\n" \
+                               "\r\n"
+                    msj = enviar_mensaje(cs, ERROR_505, cabecera)
+                    if not msj:
+                        print("ERROR al enviar mensajes por el socket")
+                    continue
 
-                if URL == "":
+                URL = reg.group(2)
+
+                if URL == '':
                     recurso = "index.html"
                 else:
-                    recurso = URL
+                    recurso = URL.split('?', 1)[0]
 
                 ruta = str(webroot) + recurso
-
-                if not os.path.isfile(ruta):
-                    mensaje = "HTTP/1.1 404 Not found\r\n" \
-                              "Date: " + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT') + "\r\n" \
-                              "Server: "+ ORGANITATION_NAME + "\r\n" \
-                              "\r\n"
-                    enviar_mensaje(cs, mensaje.encode())
-                    print(mensaje)
-                    continue
 
                 Atr = {}
                 for i in range(1, len(data)):
@@ -182,17 +185,34 @@ def process_web_request(cs, webroot):
                     else:
                         break
 
-                num_accesos = process_cookies(Atr)
-                if num_accesos == MAX_ACCESOS:
-                    mensaje = "HTTP/1.1 403 Forbidden\r\n" \
-                              "Date: " + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT') + "\r\n" \
-                              "Server: "+ ORGANITATION_NAME + "\r\n" \
-                              "\r\n"
-                    enviar_mensaje(cs, mensaje.encode())
-                    print(mensaje)
+                if not os.path.isfile(ruta):
+                    size = os.stat(ERROR_404).st_size
+                    cabecera = "HTTP/1.1 404 Not found\r\n" \
+                               "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
+                               "Server: " + ORGANITATION_NAME + "\r\n" \
+                               "Connection: keep-alive\r\n" \
+                               "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
+                               "Content-Length: " + str(size) + "\r\n" \
+                               "\r\n"
+                    msj = enviar_mensaje(cs, ERROR_404, cabecera)
+                    if not msj:
+                        print("ERROR al enviar mensajes por el socket")
                     continue
 
-                size = os.stat(ruta).st_size
+                num_accesos = process_cookies(Atr)
+                if num_accesos == MAX_ACCESOS:
+                    size = os.stat(ERROR_403).st_size
+                    cabecera = "HTTP/1.1 403 Forbidden\r\n" \
+                               "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
+                               "Server: " + ORGANITATION_NAME + "\r\n" \
+                               "Connection: keep-alive\r\n" \
+                               "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
+                               "Content-Length: " + str(size) + "\r\n" \
+                               "\r\n"
+                    msj = enviar_mensaje(cs, ERROR_403, cabecera)
+                    if not msj:
+                        print("ERROR al enviar mensajes por el socket")
+                    continue
 
                 ruta = os.path.basename(ruta)
 
@@ -200,26 +220,28 @@ def process_web_request(cs, webroot):
                 er_extension = re.compile(patron_extension)
                 rut = er_extension.fullmatch(ruta)
                 extension = str(rut.group(2))
-                cabecera = "HTTP/1.1 200 OK\r\n" \
-                           "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
-                           "Server: "+ ORGANITATION_NAME + "\r\n" \
-                           "Connection: " + str(Atr["Connection"]) + "\r\n" \
-                           "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
-                           "Set-Cookie: " + str(num_accesos) + "\r\n" \
-                           "Content-Length: " + str(size) + "\r\n" \
-                           "Content-Type: " + extension + "\r\n" \
-                           "\r\n"
-                print(cabecera)
-                cabecera = cabecera.encode()
+                size = os.stat(ruta).st_size
+                if num_accesos == 1:
+                    cabecera = "HTTP/1.1 200 OK\r\n" \
+                               "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
+                               "Server: " + ORGANITATION_NAME + "\r\n" \
+                               "Connection: " + str(Atr["Connection"]) + "\r\n" \
+                               "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
+                               "Set-Cookie: cookie_counter=" + str(num_accesos) + "\r\n" \
+                               "Content-Length: " + str(size) + "\r\n" \
+                               "Content-Type: " + extension + "\r\n" \
+                               "\r\n"
+                else:
+                    cabecera = "HTTP/1.1 200 OK\r\n" \
+                               "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
+                               "Server: " + ORGANITATION_NAME + "\r\n" \
+                               "Connection: " + str(Atr["Connection"]) + "\r\n" \
+                               "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
+                               "Content-Length: " + str(size) + "\r\n" \
+                               "Content-Type: " + extension + "\r\n" \
+                               "\r\n"
 
-                f = open(ruta, "rb")
-                cuerpo = b''
-                linea = f.read(BUFSIZE)
-                while linea != b'':
-                    cuerpo += linea
-                    linea = f.read(BUFSIZE)
-                mensaje = cabecera + cuerpo
-                enviar_mensaje(cs, mensaje)
+                enviar_mensaje(cs, ruta, cabecera)
 
 
 def main():
@@ -253,7 +275,6 @@ def main():
 
         # * Vinculamos el socket a una IP y puerto elegidos
         mysocket.bind((args.host, args.port))
-
 
         # * Escucha conexiones entrantes
         mysocket.listen()
