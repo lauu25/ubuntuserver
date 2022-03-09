@@ -27,7 +27,7 @@ ERROR_403 = "error403.html"
 ERROR_404 = "error404.html"
 ERROR_405 = "error405.html"
 ERROR_505 = "error505.html"
-MAX_AGE = 20
+MAX_AGE = 30
 
 
 # Extensiones admitidas (extension, name in HTTP)
@@ -102,7 +102,7 @@ def process_web_request(cs, webroot):
         rsublist, wsublist, xsublist = select.select([cs], [], [cs], TIMEOUT_CONNECTION)
 
         # Comprobación de TIMEOUT
-        if not (rsublist or xsublist):
+        if not rsublist:
             size = os.stat(ERROR_TOUT).st_size
             cabecera = "HTTP/1.1 Timeout exceeded \r\n" \
                        "Date: " + datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT') + "\r\n" \
@@ -116,6 +116,7 @@ def process_web_request(cs, webroot):
                 print("ERROR al enviar mensajes por el socket")
             cond = False
             cerrar_conexion(cs)
+            continue
 
         elif rsublist:
             data = recibir_mensaje(cs, BUFSIZE)
@@ -126,6 +127,7 @@ def process_web_request(cs, webroot):
             er_met = re.compile(patron_met)
             er_atrib = re.compile(patron_atrib)
             reg = er_met.fullmatch(data[0])
+
             # Comprobación de que la primera línea sigue el formato HTTP\1.1
             if not reg:
                 size = os.stat(ERROR_400).st_size
@@ -139,6 +141,7 @@ def process_web_request(cs, webroot):
                 msj = enviar_mensaje(cs, ERROR_400, cabecera)
                 if not msj:
                     print("ERROR al enviar mensajes por el socket")
+                continue
             else:
                 print(data)
 
@@ -163,12 +166,12 @@ def process_web_request(cs, webroot):
                 else:
                     recurso = URL.split('?', 1)[0]
 
-                ruta = str(webroot) + recurso
+                ruta = str(webroot) + "/" + recurso
 
-                patron_extension = r'([A-Za-z-\/]*?)\.(.*)'  ## Expresión regular para los atributos
+                patron_extension = r'([0-9A-Za-z_\-\/]*?)\.(.*)'  ## Expresión regular para los atributos
                 er_extension = re.compile(patron_extension)
                 rut = er_extension.fullmatch(ruta)
-                extension = str(rut.group(2))
+                extension = rut.group(2)
 
                 if int(reg.group(3)) != 1:
                     size = os.stat(ERROR_505).st_size
@@ -181,6 +184,21 @@ def process_web_request(cs, webroot):
                                "Content-Type: " + extension + "\r\n" \
                                "\r\n"
                     msj = enviar_mensaje(cs, ERROR_505, cabecera)
+                    if not msj:
+                        print("ERROR al enviar mensajes por el socket")
+                    continue
+
+                if not os.path.isfile(ruta):
+                    size = os.stat(ERROR_404).st_size
+                    cabecera = "HTTP/1.1 404 Not found\r\n" \
+                               "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
+                               "Server: " + ORGANITATION_NAME + "\r\n" \
+                               "Connection: keep-alive\r\n" \
+                               "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
+                               "Content-Length: " + str(size) + "\r\n" \
+                               "Content-Type: " + extension + "\r\n" \
+                               "\r\n"
+                    msj = enviar_mensaje(cs, ERROR_404, cabecera)
                     if not msj:
                         print("ERROR al enviar mensajes por el socket")
                     continue
@@ -200,21 +218,6 @@ def process_web_request(cs, webroot):
 
                 if not host:
                     print("Error: Not host especified ")
-                    continue
-
-                if not os.path.isfile(ruta):
-                    size = os.stat(ERROR_404).st_size
-                    cabecera = "HTTP/1.1 404 Not found\r\n" \
-                               "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
-                               "Server: " + ORGANITATION_NAME + "\r\n" \
-                               "Connection: keep-alive\r\n" \
-                               "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
-                               "Content-Length: " + str(size) + "\r\n" \
-                               "Content-Type: " + extension + "\r\n" \
-                               "\r\n"
-                    msj = enviar_mensaje(cs, ERROR_404, cabecera)
-                    if not msj:
-                        print("ERROR al enviar mensajes por el socket")
                     continue
 
                 num_accesos = process_cookies(Atr)
