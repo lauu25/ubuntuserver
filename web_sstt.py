@@ -156,20 +156,6 @@ def process_web_request(cs, webroot):
                         print("ERROR al enviar mensajes por el socket")
                     continue
 
-                if int(reg.group(3)) != 1:
-                    size = os.stat(ERROR_505).st_size
-                    cabecera = "HTTP/1.1 505 HTTP Version not supported\r\n" \
-                               "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
-                               "Server: " + ORGANITATION_NAME + "\r\n" \
-                               "Connection: keep-alive\r\n" \
-                               "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
-                               "Content-Length: " + str(size) + "\r\n" \
-                               "\r\n"
-                    msj = enviar_mensaje(cs, ERROR_505, cabecera)
-                    if not msj:
-                        print("ERROR al enviar mensajes por el socket")
-                    continue
-
                 URL = reg.group(2)
 
                 if URL == '':
@@ -179,8 +165,27 @@ def process_web_request(cs, webroot):
 
                 ruta = str(webroot) + recurso
 
-                Atr = {}
+                patron_extension = r'([A-Za-z-\/]*?)\.(.*)'  ## Expresión regular para los atributos
+                er_extension = re.compile(patron_extension)
+                rut = er_extension.fullmatch(ruta)
+                extension = str(rut.group(2))
 
+                if int(reg.group(3)) != 1:
+                    size = os.stat(ERROR_505).st_size
+                    cabecera = "HTTP/1.1 505 HTTP Version not supported\r\n" \
+                               "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
+                               "Server: " + ORGANITATION_NAME + "\r\n" \
+                               "Connection: keep-alive\r\n" \
+                               "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
+                               "Content-Length: " + str(size) + "\r\n" \
+                               "Content-Type: " + extension + "\r\n" \
+                               "\r\n"
+                    msj = enviar_mensaje(cs, ERROR_505, cabecera)
+                    if not msj:
+                        print("ERROR al enviar mensajes por el socket")
+                    continue
+
+                Atr = {}
                 host = 0
                 print("\n************ HTTP_REQUEST ************")
                 for i in range(1, len(data)):
@@ -205,6 +210,7 @@ def process_web_request(cs, webroot):
                                "Connection: keep-alive\r\n" \
                                "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
                                "Content-Length: " + str(size) + "\r\n" \
+                               "Content-Type: " + extension + "\r\n" \
                                "\r\n"
                     msj = enviar_mensaje(cs, ERROR_404, cabecera)
                     if not msj:
@@ -221,6 +227,7 @@ def process_web_request(cs, webroot):
                                "Connection: keep-alive\r\n" \
                                "Keep-Alive: timeout=" + str(TIMEOUT_CONNECTION) + "\r\n" \
                                "Content-Length: " + str(size) + "\r\n" \
+                               "Content-Type: " + extension + "\r\n" \
                                "\r\n"
                     msj = enviar_mensaje(cs, ERROR_403, cabecera)
                     if not msj:
@@ -228,11 +235,6 @@ def process_web_request(cs, webroot):
                     continue
 
                 ruta = os.path.basename(ruta)
-
-                patron_extension = r'([A-Za-z-\/]*?)\.(.*)'  ## Expresión regular para los atributos
-                er_extension = re.compile(patron_extension)
-                rut = er_extension.fullmatch(ruta)
-                extension = str(rut.group(2))
                 size = os.stat(ruta).st_size
                 cabecera = "HTTP/1.1 200 OK\r\n" \
                            "Date: " + str(datetime.utcnow().strftime('%a, %d %b %Y %H:%M:%S GMT')) + "\r\n" \
